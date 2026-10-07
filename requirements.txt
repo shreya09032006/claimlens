@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-multipart
+httpx
+google-genai
+twilio
+python-dotenv
+gTTS
+trafilatura
+pymupdf
+lxml_html_clean
+pillow
+imagehash
+dkimpy
+dnspython

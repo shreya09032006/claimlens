@@ -1,0 +1,17 @@
+venv/
+.env
+.env.tmp
+.cache/
+__pycache__/
+*.pyc
+.DS_Store
+data/ledger.json
+data/images.json
+data/prefs.json
+data/human_queue.json
+data/guardians.json
+data/audio/
+test_*.png
+test_*.mp3
+test_*.eml
+test_send.py

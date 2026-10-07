@@ -1,0 +1,22 @@
+[
+  {
+    "text": "Drinking hot water every 15 minutes cures COVID-19",
+    "expected": "False"
+  },
+  {
+    "text": "Link your PAN with Aadhaar before 30 June 2023 or your PAN will become inoperative",
+    "expected": "Outdated"
+  },
+  {
+    "text": "Ayushman Bharat gives Rs 5 lakh free health cover per family every year, and the cover is only for government hospitals",
+    "expected": "Partly supported"
+  },
+  {
+    "text": "The Reserve Bank of India is the central bank of India and is headquartered in Mumbai",
+    "expected": "Verified"
+  },
+  {
+    "text": "My neighbour's cousin said the government will shut down all ATMs for three days next week",
+    "expected": "Cannot be confirmed"
+  }
+]
