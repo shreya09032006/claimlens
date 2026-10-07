@@ -14,10 +14,10 @@ router = APIRouter()
 GRAPH = "https://graph.facebook.com/v21.0"
 _seen = set()
 _FWD_WARN = {
-    "en": "🚨 This message has been forwarded many times and it is *{label}*. Please do NOT forward it. Share the card below in your group instead.",
-    "hi": "🚨 यह संदेश कई बार फॉरवर्ड हुआ है और यह *{label}* है। कृपया इसे आगे न भेजें। इसके बजाय नीचे का कार्ड अपने ग्रुप में डालें।",
-    "mr": "🚨 हा संदेश अनेकदा फॉरवर्ड झाला आहे आणि तो *{label}* आहे. कृपया हा पुढे पाठवू नका. त्याऐवजी खालील कार्ड तुमच्या ग्रुपमध्ये टाका.",
-    "ml": "🚨 ഈ സന്ദേശം പലതവണ ഫോർവേഡ് ചെയ്യപ്പെട്ടു, ഇത് *{label}* ആണ്. ദയവായി ഫോർവേഡ് ചെയ്യരുത്. പകരം താഴെയുള്ള കാർഡ് ഗ്രൂപ്പിൽ പങ്കിടുക.",
+    "en": " This message has been forwarded many times and it is *{label}*. Please do NOT forward it. Share the card below in your group instead.",
+    "hi": " यह संदेश कई बार फॉरवर्ड हुआ है और यह *{label}* है। कृपया इसे आगे न भेजें। इसके बजाय नीचे का कार्ड अपने ग्रुप में डालें।",
+    "mr": " हा संदेश अनेकदा फॉरवर्ड झाला आहे आणि तो *{label}* आहे. कृपया हा पुढे पाठवू नका. त्याऐवजी खालील कार्ड तुमच्या ग्रुपमध्ये टाका.",
+    "ml": " ഈ സന്ദേശം പലതവണ ഫോർവേഡ് ചെയ്യപ്പെട്ടു, ഇത് *{label}* ആണ്. ദയവായി ഫോർവേഡ് ചെയ്യരുത്. പകരം താഴെയുള്ള കാർഡ് ഗ്രൂപ്പിൽ പങ്കിടുക.",
 }
 import json, os
 _PREFS_FILE = "data/prefs.json"
@@ -138,7 +138,7 @@ async def _send_card(to: str, claim: dict, lang: str):
                 f"{GRAPH}/{config.META_PHONE_NUMBER_ID}/messages",
                 headers=_headers(),
                 json={"messaging_product": "whatsapp", "to": to, "type": "image",
-                      "image": {"id": up.json()["id"], "caption": "📤 Share this in your group"}},
+                      "image": {"id": up.json()["id"], "caption": " Share this in your group"}},
             )
             if r.status_code >= 400:
                 print("card send error:", r.status_code, r.text[:200])
@@ -174,7 +174,7 @@ async def _human_request(to: str):
         q = []
     q.append({"who": "…" + to[-4:], "text": _last.get(to, ""), "ts": int(time.time())})
     json.dump(q, open(QUEUE, "w"))
-    await _send(to, "👤 Request logged for human review. You can also send it to a fact-checking tipline: "
+    await _send(to, " Request logged for human review. You can also send it to a fact-checking tipline: "
                 + os.getenv("TIPLINE_URL", "https://www.boomlive.in/"))
 
 
@@ -191,7 +191,7 @@ def _guardians():
 async def _guardian_alert(label, claim, n, exclude=None):
     for g in _guardians():
         if g != exclude:
-            await _send(g, f"🛡️ *Guardian alert*\nA claim already marked *{label}* has now been checked {n} times:\n\"{claim[:200]}\"\nIf it is in your family group, post the correction there.")
+            await _send(g, f" *Guardian alert*\nA claim already marked *{label}* has now been checked {n} times:\n\"{claim[:200]}\"\nIf it is in your family group, post the correction there.")
 
 
 async def _download(media_id: str):
@@ -206,13 +206,13 @@ async def _download(media_id: str):
 
 async def _process(to: str, text=None, media_id=None, fwd=False):
     try:
-        await _send(to, "🔍 *Claim Lens* is checking…")
+        await _send(to, " *Claim Lens* is checking…")
         if media_id:
             data, mime = await _download(media_id)
             m0 = mime.split(";")[0]
             text = ledger.image_text(data) if m0.startswith("image/") else None
             if text:
-                await _send(to, "🖼️ I've seen this image before.")
+                await _send(to, " I've seen this image before.")
             else:
                 text = await file_to_text(data, m0, "upload")
                 if text and m0.startswith("image/"):
@@ -220,7 +220,7 @@ async def _process(to: str, text=None, media_id=None, fwd=False):
             if not text:
                 await _send(to, "I couldn't read anything from that file.")
                 return
-            await _send(to, ("🎤 " if mime.startswith("audio") else "📄 " if "pdf" in mime else "🖼️ ") + text[:300])
+            await _send(to, (" " if mime.startswith("audio") else " " if "pdf" in mime else " ") + text[:300])
         if text and not media_id:
             u = find_url(text)
             if u and len(text.strip()) < len(u) + 40:
@@ -228,13 +228,13 @@ async def _process(to: str, text=None, media_id=None, fwd=False):
                 if not page:
                     await _send(to, "I couldn't read that link. Please paste the message text or send a screenshot.")
                     return
-                await _send(to, "🔗 " + page[:300].replace("\n", " ") + "…")
+                await _send(to, " " + page[:300].replace("\n", " ") + "…")
                 text = page
         lk = ledger.key(text, _pref.get(to))
         cached, n = ledger.lookup(lk)
         if cached:
             result = cached
-            await _send(to, f"♻️ Already checked {n} times by Claim Lens users. Showing the saved result.")
+            await _send(to, f" Already checked {n} times by Claim Lens users. Showing the saved result.")
             bad0 = [c for c in result["claims"] if c["label"] in ("False", "Outdated")]
             if bad0 and n >= 2:
                 await _guardian_alert(bad0[0]["label"], bad0[0]["text"], n, to)
@@ -249,9 +249,9 @@ async def _process(to: str, text=None, media_id=None, fwd=False):
             await _send(to, m)
         rf = result.get("redflags") or {}
         if rf.get("level") in ("medium", "high"):
-            await _send(to, "🚩 *Scam risk: " + rf["level"].upper() + "*\n" + "\n".join("• " + f for f in rf["flags"][:4]))
+            await _send(to, " *Scam risk: " + rf["level"].upper() + "*\n" + "\n".join("• " + f for f in rf["flags"][:4]))
         if result["claims"] and all(c["label"] == "Cannot be confirmed" for c in result["claims"]):
-            await _send(to, "ℹ️ I couldn't verify this with trusted public sources. Don't apply or pay through links from forwards: open the organisation's official website yourself, and never pay money for a job, scheme or prize. Check with the issuer before forwarding.\n\n🔎 *What would change this:* an official notice on the organisation's own website, or a published fact-check.\n👤 *Want a human to check it?* Send it to a fact-checking tipline such as Boom Live or Factly, or report it at cybercrime.gov.in.")
+            await _send(to, "ℹ I couldn't verify this with trusted public sources. Don't apply or pay through links from forwards: open the organisation's official website yourself, and never pay money for a job, scheme or prize. Check with the issuer before forwarding.\n\n *What would change this:* an official notice on the organisation's own website, or a published fact-check.\n *Want a human to check it?* Send it to a fact-checking tipline such as Boom Live or Factly, or report it at cybercrime.gov.in.")
         if result["claims"] and all(c["label"] == "Cannot be confirmed" for c in result["claims"]):
             _last[to] = text
             await _send_human_button(to)
@@ -299,10 +299,10 @@ async def incoming(request: Request, background: BackgroundTasks):
                 for c in cmds:
                     if c in _VOICE_OFF:
                         _voice_off.add(sender)
-                        notes.append("🔇 Voice replies are off. Send *voice on* to turn them back on.")
+                        notes.append(" Voice replies are off. Send *voice on* to turn them back on.")
                     elif c in _VOICE_ON:
                         _voice_off.discard(sender)
-                        notes.append("🔊 Voice replies are on.")
+                        notes.append(" Voice replies are on.")
                     elif c in ("guardian on", "guardian off"):
                         g = _guardians()
                         if c == "guardian on" and sender not in g:
@@ -310,11 +310,11 @@ async def incoming(request: Request, background: BackgroundTasks):
                         if c == "guardian off" and sender in g:
                             g.remove(sender)
                         json.dump(g, open(GUARD_FILE, "w"))
-                        notes.append("🛡️ Guardian mode " + ("on. I will alert you when a known false claim keeps circulating." if c == "guardian on" else "off."))
+                        notes.append(" Guardian mode " + ("on. I will alert you when a known false claim keeps circulating." if c == "guardian on" else "off."))
                     elif c in _LANG_CMDS:
                         code = _LANG_CMDS[c]
                         _pref[sender] = None if code == "auto" else code
-                        notes.append("✅ Language: " + code)
+                        notes.append(" Language: " + code)
                 if cmds:
                     _save_prefs()
                 for n in dict.fromkeys(notes):

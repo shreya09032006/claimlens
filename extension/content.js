@@ -35,11 +35,11 @@
     b.textContent = "";
     const t = document.createElement("div");
     t.style.cssText = "font-size:15px;font-weight:600;margin-bottom:6px";
-    t.textContent = (d.level === "low" ? "✅ " : "🚩 ") + "Claim Lens: " + d.level.toUpperCase() + " risk";
+    t.textContent = (d.level === "low" ? " " : " ") + "Claim Lens: " + d.level.toUpperCase() + " risk";
     b.appendChild(t);
     const list = document.createElement("div");
     if (!d.findings.length) list.textContent = "No red flags found in the visible email. For the digital signature check, use Full signature check.";
-    d.findings.forEach(f => { const r = document.createElement("div"); r.textContent = (f.sev === "high" ? "🔴 " : "🟠 ") + f.msg; list.appendChild(r); });
+    d.findings.forEach(f => { const r = document.createElement("div"); r.textContent = (f.sev === "high" ? "High: " : "Medium: ") + f.msg; list.appendChild(r); });
     b.appendChild(list);
     const bar = document.createElement("div");
     bar.style.cssText = "display:flex;gap:6px;margin-top:10px;flex-wrap:wrap";
@@ -51,23 +51,38 @@
     b.appendChild(bar);
     b.appendChild(note);
   }
+  function findIk() {
+    let m = document.documentElement.innerHTML.match(/[?&;]ik=([a-z0-9]{8,})/i);
+    if (m) return m[1];
+    try {
+      for (const e of performance.getEntriesByType("resource")) {
+        m = e.name.match(/[?&]ik=([a-z0-9]{8,})/i);
+        if (m) return m[1];
+      }
+    } catch (e) {}
+    return "";
+  }
   async function full(p, note) {
     note.textContent = "Fetching the original email...";
-    let raw = "", how = "visible text only";
+    let raw = "";
     try {
       const m = location.pathname.match(/\/mail\/u\/(\d+)/);
       const u = m ? m[1] : "0";
       const body = document.querySelector("div.a3s");
-      const holder = body && body.closest("[data-legacy-message-id]");
-      const id = holder ? holder.getAttribute("data-legacy-message-id") : "";
-      if (id) {
-        const r = await fetch("/mail/u/" + u + "/?view=om&th=" + id, {credentials: "include"});
+      const holder = body && body.closest("[data-message-id]");
+      const mid = holder ? holder.getAttribute("data-message-id").replace("#", "") : "";
+      const ik = findIk();
+      if (mid && ik) {
+        const r = await fetch("/mail/u/" + u + "/?ik=" + ik + "&view=om&permmsgid=" + encodeURIComponent(mid), {credentials: "include"});
         const t = await r.text();
-        if (r.ok && /^(Received|Delivered-To|Return-Path|Authentication-Results|DKIM-Signature|From):/mi.test(t.slice(0, 5000))) { raw = t; how = "original source"; }
+        if (r.ok && /^(Received|Delivered-To|Return-Path|Authentication-Results|DKIM-Signature|From|ARC-)[A-Za-z-]*:/mi.test(t.slice(0, 8000))) raw = t;
       }
     } catch (e) {}
-    if (!raw) raw = "From: " + p.sender + "\nSubject: " + p.subject + "\nContent-Type: text/plain\n\n" + p.body + "\n\n" + p.links.map(l => l.text + " -> " + l.href).join("\n");
-    note.textContent = "Opening the email checker (" + how + ")...";
+    if (!raw) {
+      note.textContent = "Could not read the original email automatically. Use the three dots, Show original, then click Send to Claim Lens on that page.";
+      return;
+    }
+    note.textContent = "Opening the email checker (original source)...";
     send({type: "stash", raw});
   }
   function scan(force) {

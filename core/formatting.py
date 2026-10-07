@@ -3,8 +3,8 @@ import os
 SHOW_ENGLISH = os.getenv("SHOW_ENGLISH", "1") == "1"
 
 EMOJI = {
-    "Verified": "✅", "False": "❌", "Outdated": "⏳",
-    "Partly supported": "⚠️", "Cannot be confirmed": "❓",
+    "Verified": "", "False": "", "Outdated": "",
+    "Partly supported": "", "Cannot be confirmed": "",
 }
 
 EN = {
@@ -47,7 +47,7 @@ def format_whatsapp(result: dict):
                  f"_{t['claim']} {i}:_ {claim_txt}\n\n{c['explanation_local']}")
             msgs.append(m[:1500])
             if SHOW_ENGLISH:
-                msgs.append((f"🇬🇧 *{c['label']}* — {c['text']}\n\n{c['explanation_en']}")[:1500])
+                msgs.append((f" *{c['label']}* — {c['text']}\n\n{c['explanation_en']}")[:1500])
         else:
             m = (f"{emoji} *{c['label']}*{_conf(c, EN)}\n"
                  f"_Claim {i}:_ {c['text']}\n\n{c['explanation_en']}")
@@ -56,7 +56,7 @@ def format_whatsapp(result: dict):
             msgs.append(m[:1500])
         if c["evidence"] and c["label"] != "Cannot be confirmed":
             ev = "\n\n".join(
-                f"📌 \"{e['quote']}\"\n{e['source']} • {e['date'] or '—'}\n{e['url']}"
+                f" \"{e['quote']}\"\n{e['source']} • {e['date'] or '—'}\n{e['url']}"
                 for e in c["evidence"]
             )
             msgs.append((f"*{t['evidence']}*\n" + ev)[:1500])
