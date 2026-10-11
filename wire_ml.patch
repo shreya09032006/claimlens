@@ -1,0 +1,59 @@
+diff -ruN a/app/emailpage.py b/app/emailpage.py
+--- a/app/emailpage.py	2026-10-11 06:52:42.626280498 +0000
++++ b/app/emailpage.py	2026-10-11 06:52:42.629302649 +0000
+@@ -5,6 +5,7 @@
+ from fastapi.responses import HTMLResponse
+ 
+ from core.emailcheck import check
++from core.risk import combine
+ from app.extra import HEAD
+ 
+ router = APIRouter()
+@@ -135,7 +136,11 @@
+     high = sum(1 for s, _ in uniq if s == "high")
+     med = sum(1 for s, _ in uniq if s == "medium")
+     level = "high" if high >= 1 or med >= 3 else "medium" if med >= 1 else "low"
+-    return {"level": level, "from": from_d, "findings": [{"sev": s, "msg": m} for s, m in uniq]}
++    c = combine(level, d.subject + " " + d.body[:4000])
++    findings = [{"sev": s, "msg": m} for s, m in uniq]
++    if c["note"]:
++        findings.append({"sev": "info", "msg": c["note"]})
++    return {"level": c["level"], "from": from_d, "findings": findings, "ml": c["ml"]}
+ 
+ 
+ import uuid as _uuid
+diff -ruN a/app/extra.py b/app/extra.py
+--- a/app/extra.py	2026-10-11 06:52:42.625211740 +0000
++++ b/app/extra.py	2026-10-11 06:52:42.628353636 +0000
+@@ -3,6 +3,7 @@
+ from pydantic import BaseModel
+ 
+ from core.redflags import scan
++from core.risk import combine
+ 
+ router = APIRouter()
+ 
+@@ -33,6 +34,11 @@
+             else:
+                 extra["note"] = "I could not open that link, so only the link itself was checked."
+     r = scan(scan_text)
++    c = combine(r["level"], scan_text[:4000])
++    r["level"] = c["level"]
++    r["ml"] = c["ml"]
++    if c["note"]:
++        r["flags"] = r["flags"] + [c["note"]]
+     r.update(extra)
+     return r
+ 
+diff -ruN a/extension/content.js b/extension/content.js
+--- a/extension/content.js	2026-10-11 06:52:42.627359782 +0000
++++ b/extension/content.js	2026-10-11 06:52:42.630341256 +0000
+@@ -39,7 +39,7 @@
+     b.appendChild(t);
+     const list = document.createElement("div");
+     if (!d.findings.length) list.textContent = "No red flags found in the visible email. For the digital signature check, use Full signature check.";
+-    d.findings.forEach(f => { const r = document.createElement("div"); r.textContent = (f.sev === "high" ? "High: " : "Medium: ") + f.msg; list.appendChild(r); });
++    d.findings.forEach(f => { const r = document.createElement("div"); r.textContent = (f.sev === "high" ? "High: " : f.sev === "info" ? "Note: " : "Medium: ") + f.msg; list.appendChild(r); });
+     b.appendChild(list);
+     const bar = document.createElement("div");
+     bar.style.cssText = "display:flex;gap:6px;margin-top:10px;flex-wrap:wrap";

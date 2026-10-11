@@ -4,7 +4,7 @@ RULES = [
     (r"\b(otp|cvv|pin|password)\b", "Asks for an OTP, PIN or password"),
     (r"(kyc|account.{0,12}(blocked|suspended|closed)|sim.{0,12}(blocked|deactivat))", "Threatens to block your account or SIM"),
     (r"(free|cashback|prize|lottery|won|reward|gift).{0,40}(rs\.?|₹|rupees|lakh|crore|\d{3,})|(rs\.?|₹)\s?\d[\d,]*.{0,40}(free|cashback|prize|reward)", "Promises free money or a prize"),
-    (r"(share|forward).{0,40}(\d+|ten|everyone|friends|groups)", "Pressures you to forward it to many people"),
+    (r"\b(share|forward)\b.{0,40}(\b(\d+|ten)\s+(people|friends|groups|contacts)\b|\beveryone\b|\ball (your |the )?(friends|contacts|groups)\b)", "Pressures you to forward it to many people"),
     (r"(within \d+ (hours|minutes)|last date|expires|urgent|immediately|hurry|limited time|today only)", "Creates false urgency"),
     (r"(registration fee|processing fee|security deposit|pay.{0,30}(job|loan|offer|claim))", "Asks you to pay a fee for a job, loan or offer"),
     (r"(bit\.ly|tinyurl|cutt\.ly|is\.gd|rb\.gy|wa\.link|t\.co/)", "Uses a shortened link that hides the real site"),

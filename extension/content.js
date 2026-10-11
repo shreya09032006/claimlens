@@ -1,7 +1,7 @@
 (function () {
   if (window.__claimlens14) { window.__claimlens14.scan(true); return; }
-  const COL = {low: "#2e7d32", medium: "#ef6c00", high: "#c62828", none: "#777"};
-  let badge = null, lastKey = "", timer = null;
+  const COL = {low: "#2e7d32", medium: "#ef6c00", high: "#c62828", none: "#777", promo: "#1565c0"};
+  let badge = null, lastKey = "", failedKey = "", timer = null;
 
   function alive() { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } }
   function box() {
@@ -31,16 +31,24 @@
   function render(d, p) {
     const b = box();
     b.style.display = "block";
-    b.style.borderLeftColor = COL[d.level];
+    const promo = d.category === "promotional";
+    b.style.borderLeftColor = COL[promo ? "promo" : d.level];
     b.textContent = "";
     const t = document.createElement("div");
     t.style.cssText = "font-size:15px;font-weight:600;margin-bottom:6px";
-    t.textContent = (d.level === "low" ? " " : " ") + "Claim Lens: " + d.level.toUpperCase() + " risk";
+    t.textContent = promo ? "Claim Lens: PROMOTIONAL (bulk marketing mail)" : "Claim Lens: " + d.level.toUpperCase() + " risk";
     b.appendChild(t);
     const list = document.createElement("div");
     if (!d.findings.length) list.textContent = "No red flags found in the visible email. For the digital signature check, use Full signature check.";
-    d.findings.forEach(f => { const r = document.createElement("div"); r.textContent = (f.sev === "high" ? "High: " : "Medium: ") + f.msg; list.appendChild(r); });
+    d.findings.forEach(f => { const r = document.createElement("div"); r.textContent = (f.sev === "high" ? "High: " : f.sev === "info" ? "Note: " : "Medium: ") + f.msg; list.appendChild(r); });
     b.appendChild(list);
+    if (d.ml) {
+      const m = document.createElement("div");
+      m.style.cssText = "margin-top:6px;color:#9a9a9a;font-size:12px";
+      const sc = Math.round(d.ml.probability * 100);
+      m.textContent = "ML model score: " + (sc < 5 ? "under 5" : sc > 95 ? "over 95" : sc) + " / 100 (higher = more phishing-like)";
+      b.appendChild(m);
+    }
     const bar = document.createElement("div");
     bar.style.cssText = "display:flex;gap:6px;margin-top:10px;flex-wrap:wrap";
     const note = document.createElement("div");
@@ -100,13 +108,20 @@
     const links = Array.from(body.querySelectorAll("a[href]")).map(a => ({href: a.href, text: a.textContent.trim()}));
     const p = {sender, subject: subjEl ? subjEl.textContent.trim() : "", body: body.innerText.slice(0, 4000), links};
     const key = p.subject + "|" + sender + "|" + p.body.length;
+    if (force) failedKey = "";
+    if (!force && key === failedKey) return;   // this email already failed: do not retry or nag
     if (!force && key === lastKey && badge && badge.style.display !== "none") return;
     lastKey = key;
     status("Claim Lens is checking this email...");
     send({type: "check", data: p}, res => {
-      if (chrome.runtime.lastError) { status("Claim Lens error: " + chrome.runtime.lastError.message); return; }
+      const fail = msg => {
+        failedKey = key;                                  // remember, so we do not repeat for this email
+        if (force) status(msg);                           // only tell the user when they asked (right-click)
+        else if (badge) badge.style.display = "none";
+      };
+      if (chrome.runtime.lastError) { fail("Claim Lens error: " + chrome.runtime.lastError.message); return; }
       if (res && res.ok) render(res.d, p);
-      else status("Claim Lens could not reach the server (" + (res && res.err) + "). Check that uvicorn and ngrok are running.");
+      else fail("Claim Lens could not reach the server (" + (res && res.err) + "). Check that uvicorn and ngrok are running.");
     });
   }
   window.__claimlens14 = {scan};

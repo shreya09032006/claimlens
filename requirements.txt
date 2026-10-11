@@ -13,3 +13,6 @@ pillow
 imagehash
 dkimpy
 dnspython
+scikit-learn
+pandas
+joblib

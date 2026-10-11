@@ -5,6 +5,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse
 
 from core.emailcheck import check
+from core.risk import combine
 from app.extra import HEAD
 
 router = APIRouter()
@@ -112,6 +113,21 @@ class Lite(BaseModel):
     links: List[Link] = []
 
 
+def _shown_domain(text):
+    """Return a regex match only if the link text really shows a web address.
+
+    Degree names and abbreviations such as 'B.Tech', 'Ph.D' or 'B.Com' look like
+    domains but are not, so the first label must be 3+ letters and the text must
+    start with http(s)://, www., or be essentially just the address.
+    """
+    t = (text or "").strip().lower()
+    m = _re.search(r"([a-z0-9-]+\.)+[a-z]{2,}", t)
+    if not m or len(m.group(0).split(".")[0]) < 3:
+        return None
+    looks_like_url = t.startswith(("http://", "https://", "www.")) or len(t) <= len(m.group(0)) + 25
+    return m if looks_like_url and " " not in t.split("/")[0] else None
+
+
 @router.post("/api/email-lite")
 async def email_lite(d: Lite):
     f = []
@@ -124,7 +140,7 @@ async def email_lite(d: Lite):
             continue
         seen.append(hd)
         _brand_check(hd, f, "Link domain")
-        m = _re.search(r"([a-z0-9-]+\.)+[a-z]{2,}", l.text.lower())
+        m = _shown_domain(l.text)
         if m and _root(m.group(0)) != _root(hd):
             f.append(("high", f"Link text shows '{m.group(0)}' but really goes to '{hd}'"))
         if _re.search(r"(bit\.ly|tinyurl|cutt\.ly|rb\.gy)", hd):
@@ -135,7 +151,15 @@ async def email_lite(d: Lite):
     high = sum(1 for s, _ in uniq if s == "high")
     med = sum(1 for s, _ in uniq if s == "medium")
     level = "high" if high >= 1 or med >= 3 else "medium" if med >= 1 else "low"
-    return {"level": level, "from": from_d, "findings": [{"sev": s, "msg": m} for s, m in uniq]}
+    c = combine(level, d.subject + " " + d.body[:4000], sender=d.sender)
+    findings = [{"sev": s, "msg": m} for s, m in uniq]
+    if c["level"] == "low":      # verdict is low: drop weak rule hits, they only confuse
+        findings = []
+        if c.get("category") != "promotional":
+            c["note"] = None
+    if c["note"]:
+        findings.append({"sev": "info", "msg": c["note"]})
+    return {"level": c["level"], "from": from_d, "findings": findings, "ml": c["ml"], "category": c.get("category")}
 
 
 import uuid as _uuid

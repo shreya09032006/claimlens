@@ -15,3 +15,4 @@ test_*.png
 test_*.mp3
 test_*.eml
 test_send.py
+ml/data/

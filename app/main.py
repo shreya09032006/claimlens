@@ -10,6 +10,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from core import config
 from core.pipeline import check_text
 from core.formatting import format_whatsapp
+from app.mlapi import router as ml_router
 from app.emailpage import router as email_router
 from app.dashboard import router as dash_router
 from app.extra import router as extra_router
@@ -23,6 +24,7 @@ from app.tts import router as tts_router
 from app.upload import router as upload_router
 
 app = FastAPI(title="Claim Lens")
+app.include_router(ml_router)
 app.include_router(email_router)
 app.include_router(dash_router)
 app.include_router(extra_router)
