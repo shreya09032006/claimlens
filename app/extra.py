@@ -3,7 +3,6 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from core.redflags import scan
-from core.risk import combine
 
 router = APIRouter()
 
@@ -34,11 +33,6 @@ async def api_scan(b: ScanIn):
             else:
                 extra["note"] = "I could not open that link, so only the link itself was checked."
     r = scan(scan_text)
-    c = combine(r["level"], scan_text[:4000])
-    r["level"] = c["level"]
-    r["ml"] = c["ml"]
-    if c["note"]:
-        r["flags"] = r["flags"] + [c["note"]]
     r.update(extra)
     return r
 

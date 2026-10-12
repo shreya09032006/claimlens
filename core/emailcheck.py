@@ -47,10 +47,27 @@ class _Links(HTMLParser):
             self._href = None
 
 
+def shown_domain(text):
+    """Return a regex match only if the link text really shows a web address.
+
+    Degree names and abbreviations such as 'B.Tech', 'Ph.D' or 'B.Com' look like
+    domains but are not: the first label must be 3+ letters, and the text must start
+    with http(s):// or www., or be essentially just the address.
+    """
+    t = (text or "").strip().lower()
+    m = re.search(r"([a-z0-9-]+\.)+[a-z]{2,}", t)
+    if not m or len(m.group(0).split(".")[0]) < 3:
+        return None
+    looks_like_url = t.startswith(("http://", "https://", "www.")) or len(t) <= len(m.group(0)) + 25
+    return m if looks_like_url and " " not in t.split("/")[0] else None
+
+
 def _brand_check(domain, out, where):
-    flat = domain.replace("-", "").replace(".", "")
+    # match inside one label at a time: joining labels ("links.bigbasket.com" -> "linksbigbasketcom")
+    # created false hits such as "sbi" across "links" + "bigbasket"
+    labels = [x.replace("-", "") for x in domain.split(".")]
     for b, real in BRANDS.items():
-        if b in flat and not any(domain == r or domain.endswith("." + r) for r in real):
+        if any(b in x for x in labels) and not any(domain == r or domain.endswith("." + r) for r in real):
             out.append(("high", f"{where} '{domain}' imitates {b.upper()} but is not its real domain"))
             return
 
@@ -113,8 +130,8 @@ def check(raw: bytes) -> dict:
             continue
         seen.append(hd)
         _brand_check(hd, f, "Link domain")
-        m = re.search(r"([a-z0-9-]+\.)+[a-z]{2,}", txt.lower())
-        if m and _root(m.group(0)) != _root(hd):
+        m = shown_domain(txt)
+        if m and "@" not in txt and not any(k in hd for k in ("inflection", "track", "click", "trk", "redirect", "sendgrid", "mailchimp", "list-manage")) and _root(m.group(0)) != _root(hd):
             f.append(("high", f"Link text shows '{m.group(0)}' but really goes to '{hd}'"))
         if re.search(r"(bit\.ly|tinyurl|cutt\.ly|rb\.gy)", hd):
             f.append(("medium", f"Shortened link hides the real site ({hd})"))

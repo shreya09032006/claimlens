@@ -1,94 +1,65 @@
-"""core/risk.py - the ML model decides; rules and header checks can only escalate.
+"""Combine the ML prediction with rule evidence into one verdict.
 
-ML score (0-100) -> level:  70+ high | 30-69 medium | under 30 low (safe)
-Rule/header checks: a 'high' result from them (failed SPF/DKIM, lookalike
-domain, 3+ red flags...) keeps the level at high. Weak rule flags alone
-(e.g. a phone number in a footer) never raise the level; they are shown
-as evidence only.
+The ML model reads wording; the rules read facts (lookalike domains, link/text mismatch,
+shorteners, failed SPF/DKIM). A fact beats a guess, so any HIGH finding means phishing
+whatever the model says, and a marketing/safe label is downgraded when several soft red
+flags pile up. The model alone never produces a 'phishing' label on weak evidence.
 """
-import re
+from urllib.parse import urlparse
 
-from core import mlmodels
+from ml.emailfeatures import BAD_TLDS, SHORTENERS, _dom, is_tracker
+from .emailcheck import BRANDS, _brand_check, _root, shown_domain
+from .redflags import scan
 
-_RANK = {"low": 0, "medium": 1, "high": 2}
-
-
-def ml_level(p: float) -> str:
-    return "high" if p >= 0.70 else "medium" if p >= 0.30 else "low"
-
-
-# ---- "Promotional" mode: bulk marketing mail that is not phishing-like ----
-def _rx(*parts):
-    return re.compile("|".join(parts), re.I)
-
-
-_BULK = _rx(
-    r"unsubscribe", r"you are receiving (this|these)", r"you.re receiving (this|these)",
-    r"you received this email because", r"you have subscribed", r"you subscribed",
-    r"subscribed to (our|the)", r"mailing list", r"view (this email )?in (your )?browser",
-    r"manage (your )?(email )?preferences", r"opt.?out",
-)
-_OFFER = _rx(
-    r"\d+\s*%\s*(off|refund|discount)", r"\boffer\b", r"\bsale\b", r"discount",
-    r"limited (time|period)", r"coupon", r"promo code", r"\bexclusive\b", r"\bdeal\b",
-    r"shop now", r"buy now", r"enrol+ now", r"register now", r"free trial", r"hurry",
-    r"offer ends", r"ends on", r"last date", r"cashback", r"money.?back", r"\u20b9\s?\d",
-    r"\bpercentile\b", r"\bcourse\b", r"webinar",
-)
-_BULK_SENDER = _rx(
-    r"@(?:e|em|email|emails|mail|mailer|news|newsletter|offers|promo|promos|marketing"
-    r"|updates|info|mkt|go)\.[\w-]+\.[\w.]+",
-)
-_MORE = _rx(r"read more", r"learn more", r"new arrivals", r"this week on", r"newsletter")
-_TRANS = _rx(
-    r"order number", r"order #", r"has shipped", r"out for delivery", r"delivered",
-    r"invoice", r"receipt", r"\botp\b", r"one.time password", r"debited", r"credited",
-    r"your refund", r"has been processed", r"sign.in to your", r"security alert",
-    r"reset your password", r"verify your email",
-)
+TRUSTED = {_root(d) for v in BRANDS.values() for d in v} | {
+    "github.com", "gitlab.com", "apple.com", "atlassian.com", "slack.com", "notion.so", "dropbox.com", "digitalocean.com"}
+def lite_findings(sender="", subject="", body="", links=None):
+    """Rule evidence from what the Gmail badge sends (no raw headers). [(sev, message)]"""
+    f, sd = [], _dom(sender)
+    if sd:
+        _brand_check(sd, f, "Sender domain")
+    for l in links or []:
+        href, txt = (l.get("href", ""), l.get("text", "")) if isinstance(l, dict) else l
+        h = (urlparse(href).hostname or "").lower()
+        if not h:
+            continue
+        _brand_check(h, f, "Link domain")
+        m = shown_domain(txt)
+        if m and "@" not in txt and not is_tracker(h) and _root(m.group(0)) != _root(h):
+            f.append(("high", f"Link text shows '{m.group(0)}' but really goes to '{h}'"))
+        if any(h == s or h.endswith("." + s) for s in SHORTENERS):
+            f.append(("medium", f"Shortened link hides the real site ({h})"))
+        if h.endswith(BAD_TLDS):
+            f.append(("medium", f"Link on a domain type often used by scams ({h})"))
+    for fl in scan(f"{subject} {body}")["flags"]:
+        f.append(("medium", fl))
+    roots = {_root(urlparse(l.get("href", "") if isinstance(l, dict) else l[0]).hostname or "") for l in (links or [])} - {""}
+    if not f and _root(sd) in TRUSTED and roots <= {_root(sd)}:
+        f.append(("ok", f"Sender and all links belong to {_root(sd)}"))
+    return list(dict.fromkeys(f))
 
 
-def promo_cues(text: str, sender: str = "") -> list:
-    """Return the marketing cues found, or [] if it does not look like bulk marketing."""
-    if _TRANS.search(text):
-        return []        # orders, receipts, OTPs and alerts are not marketing
-    bulk = _BULK.search(text)
-    bulk_sender = _BULK_SENDER.search(sender + " " + text)
-    offer = _OFFER.search(text)
-    n_offer = len(_OFFER.findall(text))
-    more = _MORE.search(text)
-    if not (bulk_sender or (bulk and (offer or more)) or n_offer >= 3):
-        return []
-    cues = []
-    if bulk_sender:
-        cues.append("sent from a bulk-mail address (" + bulk_sender.group(0).lower() + ")")
-    if bulk:
-        cues.append("mailing-list wording (" + bulk.group(0).lower() + ")")
-    if offer:
-        cues.append("offer or sales wording (" + offer.group(0).lower().strip() + ")")
-    elif more:
-        cues.append("newsletter wording (" + more.group(0).lower() + ")")
-    return cues
-
-
-def combine(rule_level: str, text: str, sender: str = "") -> dict:
-    ml = mlmodels.predict_email(text)
-    if ml is None:                       # model not trained / file missing: fall back to rules
-        return {"level": rule_level, "ml": None, "note": None, "category": None, "promo_cues": []}
-    p = ml["probability"]
-    level, note = ml_level(p), None
-    if rule_level == "high" and _RANK[level] < 2:
-        level = "high"
-        note = "Strong red flags were found by the rule and header checks."
-    elif rule_level != "low" and level == "low":
-        note = "Some weak red flags were found, but the wording reads like a normal message."
-    if level != "low" and note is None:   # verdict came from the model alone: say so
-        words = ", ".join(ml["pushed_toward_phishing"][:4])
-        note = f"The wording resembles phishing emails (ML model score {round(p * 100)} / 100)" + (f": {words}." if words else ".")
-    category, cues = None, []
-    if level == "low":                   # only a message that is NOT phishing-like can be called promotional
-        cues = promo_cues(text, sender)
-        if cues:
-            category = "promotional"
-            note = "Looks like bulk marketing mail: " + "; ".join(cues) + ". Not phishing-like (ML model score " + str(round(p * 100)) + " / 100)."
-    return {"level": level, "ml": ml, "note": note, "category": category, "promo_cues": cues}
+def combine(ml, findings, auth=None):
+    """ml: result of predict_email3 (or None). findings: [(sev, msg)]. auth: optional {'spf','dkim','dmarc'}."""
+    hard = [m for s, m in findings if s == "high"]
+    soft = [m for s, m in findings if s == "medium"]
+    auth = auth or {}
+    failed = [k.upper() for k in ("spf", "dkim", "dmarc") if (auth.get(k) or "") in ("fail", "softfail")]
+    reasons = hard + (["Failed " + "/".join(failed) + " check on the sender"] if failed else []) + soft[:3]
+    p = (ml or {}).get("probs", {})
+    label = (ml or {}).get("label", "unsure")
+    if hard or failed:
+        out = "phishing"
+    elif label == "phishing":
+        if soft:
+            out = "phishing"
+        elif p.get("phishing", 0) >= 0.9:
+            out = "suspicious"
+        else:  # model alone, no rule evidence: show its best non-phishing guess instead of a false alarm
+            out = max((c for c in p if c != "phishing"), key=p.get)
+    elif label in ("safe", "marketing"):
+        weak_phish = p.get("phishing", 0) >= 0.3 and len(soft) >= 1
+        out = "suspicious" if (len(soft) >= 3 or weak_phish) else label
+    else:  # unsure
+        out = "suspicious" if len(soft) >= 2 else "unsure"
+    return {"label": out, "confidence": (ml or {}).get("confidence"), "probs": p, "reasons": reasons}

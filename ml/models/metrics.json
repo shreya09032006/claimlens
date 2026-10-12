@@ -1,91 +1,28 @@
 {
-  "email": {
-    "algorithm": "TF-IDF (word + char n-grams) + Logistic Regression",
-    "train": 66264,
-    "big_heldout": {
-      "n": 16407,
-      "precision": 0.9903116610248629,
-      "recall": 0.9906585707613265,
-      "f1": 0.9904850855174829,
-      "confusion": [
-        [
-          7760,
-          83
-        ],
-        [
-          80,
-          8484
-        ]
-      ]
-    },
-    "indian_unseen_types": {
-      "n": 71,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0,
-      "confusion": [
-        [
-          29,
-          0
-        ],
-        [
-          0,
-          42
-        ]
-      ]
-    },
-    "note": "Indian set is synthetic; no real-world test set yet"
-  },
-  "url": {
-    "train": 188296,
-    "test": 47074,
-    "precision": 0.9247793035801863,
-    "recall": 0.7503481894150418,
-    "f1": 0.828481985940246,
+  "email_phishing_lr": {
+    "algorithm": "TF-IDF (5000 words) + Logistic Regression",
+    "source": "github.com/Lalitkumar21/Phishing-email-detection; dataset zefang-liu/phishing-email-dataset",
+    "train": 14907,
+    "test": 3727,
+    "accuracy": 0.9689,
+    "precision": 0.9424,
+    "recall": 0.98,
+    "f1": 0.9609,
     "confusion": [
       [
-        25743,
-        1227
+        2187,
+        87
       ],
       [
-        5019,
-        15085
-      ]
-    ],
-    "algorithm": "Random Forest (URL-string features)",
-    "top_features": [
-      [
-        "host_digits",
-        0.14421144845228664
-      ],
-      [
-        "entropy",
-        0.13139015598733125
-      ],
-      [
-        "host_len",
-        0.12341532955835588
-      ],
-      [
-        "host_digit_ratio",
-        0.12321773577087723
-      ],
-      [
-        "dots",
-        0.10130240987510378
-      ],
-      [
-        "subdomains",
-        0.08987913012127549
-      ],
-      [
-        "longest_label",
-        0.08277531267227517
-      ],
-      [
-        "bad_tld",
-        0.08240261121118263
+        29,
+        1424
       ]
     ]
+  },
+  "email_3class": {
+    "model": "TF-IDF(1-2gram) + 27 structural features + multinomial LR, 3 classes",
+    "train_rows": 3000,
+    "your_real_rows": 0,
+    "holdout_accuracy": 0.9583
   }
 }

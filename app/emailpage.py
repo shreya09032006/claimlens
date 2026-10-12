@@ -4,8 +4,8 @@ from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse
 
+from core import mlmodels
 from core.emailcheck import check
-from core.risk import combine
 from app.extra import HEAD
 
 router = APIRouter()
@@ -95,10 +95,6 @@ if(sid){fetch("/api/email-stash/"+sid).then(r=>r.json()).then(d=>{$("t").value=d
 
 from pydantic import BaseModel
 from typing import List
-from urllib.parse import urlparse
-import re as _re
-from core.emailcheck import _brand_check, _root, _dom
-from core.redflags import scan as _scan
 
 
 class Link(BaseModel):
@@ -113,53 +109,19 @@ class Lite(BaseModel):
     links: List[Link] = []
 
 
-def _shown_domain(text):
-    """Return a regex match only if the link text really shows a web address.
-
-    Degree names and abbreviations such as 'B.Tech', 'Ph.D' or 'B.Com' look like
-    domains but are not, so the first label must be 3+ letters and the text must
-    start with http(s)://, www., or be essentially just the address.
-    """
-    t = (text or "").strip().lower()
-    m = _re.search(r"([a-z0-9-]+\.)+[a-z]{2,}", t)
-    if not m or len(m.group(0).split(".")[0]) < 3:
-        return None
-    looks_like_url = t.startswith(("http://", "https://", "www.")) or len(t) <= len(m.group(0)) + 25
-    return m if looks_like_url and " " not in t.split("/")[0] else None
-
-
 @router.post("/api/email-lite")
 async def email_lite(d: Lite):
-    f = []
-    from_d = _dom(d.sender) or d.sender.split("@")[-1].lower()
-    _brand_check(from_d, f, "Sender domain")
-    seen = []
-    for l in d.links[:40]:
-        hd = (urlparse(l.href).hostname or "").lower()
-        if not hd or hd.endswith("google.com"):
-            continue
-        seen.append(hd)
-        _brand_check(hd, f, "Link domain")
-        m = _shown_domain(l.text)
-        if m and _root(m.group(0)) != _root(hd):
-            f.append(("high", f"Link text shows '{m.group(0)}' but really goes to '{hd}'"))
-        if _re.search(r"(bit\.ly|tinyurl|cutt\.ly|rb\.gy)", hd):
-            f.append(("medium", f"Shortened link hides the real site ({hd})"))
-    for fl in _scan(d.subject + " " + d.body[:4000])["flags"]:
-        f.append(("medium", fl))
-    uniq = list(dict.fromkeys(f))
-    high = sum(1 for s, _ in uniq if s == "high")
-    med = sum(1 for s, _ in uniq if s == "medium")
-    level = "high" if high >= 1 or med >= 3 else "medium" if med >= 1 else "low"
-    c = combine(level, d.subject + " " + d.body[:4000], sender=d.sender)
-    findings = [{"sev": s, "msg": m} for s, m in uniq]
-    if c["level"] == "low":      # verdict is low: drop weak rule hits, they only confuse
-        findings = []
-        if c.get("category") != "promotional":
-            c["note"] = None
-    if c["note"]:
-        findings.append({"sev": "info", "msg": c["note"]})
-    return {"level": c["level"], "from": from_d, "findings": findings, "ml": c["ml"], "category": c.get("category")}
+    """Gmail badge: safe / marketing / phishing, plus 'suspicious' or 'unsure' when evidence is mixed."""
+    from core.risk import combine, lite_findings
+    links = [{"href": l.href, "text": l.text} for l in d.links]
+    ml = mlmodels.predict_email3(d.sender, d.subject, d.body[:6000], links)
+    if ml is None:  # 3-class model not trained: fall back to the old binary model
+        r = mlmodels.predict_email((d.subject + " " + d.body)[:6000])
+        if r is None:
+            return {"verdict": "unavailable"}
+        return {"verdict": r["label"], "reasons": []}
+    c = combine(ml, lite_findings(d.sender, d.subject, d.body, links))
+    return {"verdict": c["label"], "confidence": c["confidence"], "probs": c["probs"], "reasons": c["reasons"]}
 
 
 import uuid as _uuid

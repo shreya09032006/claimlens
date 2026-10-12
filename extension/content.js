@@ -1,7 +1,7 @@
 (function () {
   if (window.__claimlens14) { window.__claimlens14.scan(true); return; }
-  const COL = {low: "#2e7d32", medium: "#ef6c00", high: "#c62828", none: "#777", promo: "#1565c0"};
-  let badge = null, lastKey = "", failedKey = "", timer = null;
+  const COL = {safe: "#2e7d32", marketing: "#1565c0", suspicious: "#ef6c00", phishing: "#c62828", unsure: "#777", unavailable: "#777", none: "#777"};
+  let badge = null, lastKey = "", failedKey = "", timer = null, rawWhy = "";
 
   function alive() { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } }
   function box() {
@@ -31,24 +31,33 @@
   function render(d, p) {
     const b = box();
     b.style.display = "block";
-    const promo = d.category === "promotional";
-    b.style.borderLeftColor = COL[promo ? "promo" : d.level];
+    b.style.borderLeftColor = COL[d.verdict] || COL.unavailable;
     b.textContent = "";
     const t = document.createElement("div");
     t.style.cssText = "font-size:15px;font-weight:600;margin-bottom:6px";
-    t.textContent = promo ? "Claim Lens: PROMOTIONAL (bulk marketing mail)" : "Claim Lens: " + d.level.toUpperCase() + " risk";
-    b.appendChild(t);
-    const list = document.createElement("div");
-    if (!d.findings.length) list.textContent = "No red flags found in the visible email. For the digital signature check, use Full signature check.";
-    d.findings.forEach(f => { const r = document.createElement("div"); r.textContent = (f.sev === "high" ? "High: " : f.sev === "info" ? "Note: " : "Medium: ") + f.msg; list.appendChild(r); });
-    b.appendChild(list);
-    if (d.ml) {
-      const m = document.createElement("div");
-      m.style.cssText = "margin-top:6px;color:#9a9a9a;font-size:12px";
-      const sc = Math.round(d.ml.probability * 100);
-      m.textContent = "ML model score: " + (sc < 5 ? "under 5" : sc > 95 ? "over 95" : sc) + " / 100 (higher = more phishing-like)";
-      b.appendChild(m);
+    const a = document.createElement("div");
+    if (d.verdict === "phishing") {
+      t.textContent = "Claim Lens: PHISHING email";
+      a.textContent = "The model thinks this is a phishing email. Do not click links or open attachments.";
+    } else if (d.verdict === "safe") {
+      t.textContent = "Claim Lens: SAFE email";
+      a.textContent = "No signs of phishing or promotion found.";
+    } else if (d.verdict === "marketing") {
+      t.textContent = "Claim Lens: MARKETING email";
+      a.textContent = "Looks like a promotion or newsletter, not a scam. Still avoid entering passwords from its links.";
+    } else if (d.verdict === "suspicious") {
+      t.textContent = "Claim Lens: SUSPICIOUS email";
+      a.textContent = "Some warning signs found. Do not click links or share codes until you verify the sender.";
+    } else if (d.verdict === "unsure") {
+      t.textContent = "Claim Lens: NOT SURE";
+      a.textContent = "The evidence is mixed. Check the sender address before acting on this email.";
+    } else {
+      t.textContent = "Claim Lens: model not ready";
+      a.textContent = "Train the model first: python3 -W ignore -m ml.train_phishing_email";
     }
+    b.appendChild(t);
+    b.appendChild(a);
+    (d.reasons || []).forEach(x => { const r = document.createElement("div"); r.style.cssText = "margin-top:4px;color:#ddd"; r.textContent = "• " + x; b.appendChild(r); });
     const bar = document.createElement("div");
     bar.style.cssText = "display:flex;gap:6px;margin-top:10px;flex-wrap:wrap";
     const note = document.createElement("div");
@@ -60,7 +69,8 @@
     b.appendChild(note);
   }
   function findIk() {
-    let m = document.documentElement.innerHTML.match(/[?&;]ik=([a-z0-9]{8,})/i);
+    const html = document.documentElement.innerHTML;
+    let m = html.match(/[?&;]ik=([a-z0-9]{8,})/i) || html.match(/["']ik["']\s*[:,]\s*["']([a-z0-9]{8,})["']/i);
     if (m) return m[1];
     try {
       for (const e of performance.getEntriesByType("resource")) {
@@ -70,22 +80,28 @@
     } catch (e) {}
     return "";
   }
-  async function full(p, note) {
-    note.textContent = "Fetching the original email...";
-    let raw = "";
+  async function getRaw() {
+    rawWhy = "";
     try {
       const m = location.pathname.match(/\/mail\/u\/(\d+)/);
       const u = m ? m[1] : "0";
-      const body = document.querySelector("div.a3s");
+      const body = document.querySelector("div.a3s.aiL") || document.querySelector("div.a3s");
       const holder = body && body.closest("[data-message-id]");
       const mid = holder ? holder.getAttribute("data-message-id").replace("#", "") : "";
+      if (!mid) { rawWhy = "no message id found on the page"; return ""; }
       const ik = findIk();
-      if (mid && ik) {
-        const r = await fetch("/mail/u/" + u + "/?ik=" + ik + "&view=om&permmsgid=" + encodeURIComponent(mid), {credentials: "include"});
-        const t = await r.text();
-        if (r.ok && /^(Received|Delivered-To|Return-Path|Authentication-Results|DKIM-Signature|From|ARC-)[A-Za-z-]*:/mi.test(t.slice(0, 8000))) raw = t;
-      }
-    } catch (e) {}
+      if (!ik) { rawWhy = "no Gmail session key found"; return ""; }
+      const r = await fetch("/mail/u/" + u + "/?ik=" + ik + "&view=om&permmsgid=" + encodeURIComponent(mid), {credentials: "include"});
+      const t = await r.text();
+      if (!r.ok) { rawWhy = "Gmail answered HTTP " + r.status; return ""; }
+      if (!/^(Received|Delivered-To|Return-Path|Authentication-Results|DKIM-Signature|From|ARC-)[A-Za-z-]*:/mi.test(t.slice(0, 8000))) { rawWhy = "Gmail returned an unexpected page"; return ""; }
+      return t;
+    } catch (e) { rawWhy = "request error: " + e; }
+    return "";
+  }
+  async function full(p, note) {
+    note.textContent = "Fetching the original email...";
+    const raw = await getRaw();
     if (!raw) {
       note.textContent = "Could not read the original email automatically. Use the three dots, Show original, then click Send to Claim Lens on that page.";
       return;
