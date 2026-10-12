@@ -31,6 +31,20 @@ def lite_findings(sender="", subject="", body="", links=None):
             f.append(("medium", f"Shortened link hides the real site ({h})"))
         if h.endswith(BAD_TLDS):
             f.append(("medium", f"Link on a domain type often used by scams ({h})"))
+        try:
+            import urlcheck
+            seen = set()
+            for l in links or []:
+                href = l.get("href", "") if isinstance(l, dict) else l[0]
+                h = (urlparse(href).hostname or "").lower()
+                if not h or h in seen or is_tracker(h) or _root(h) in TRUSTED or len(seen) >= 6:
+                    continue
+                seen.add(h)
+                m = urlcheck.scan_url(href)
+                if m and m["phishing_probability"] >= 0.9:
+                    f.append(("medium", f"Link looks like phishing to the URL model ({h})"))
+        except Exception:
+            pass
     for fl in scan(f"{subject} {body}")["flags"]:
         f.append(("medium", fl))
     roots = {_root(urlparse(l.get("href", "") if isinstance(l, dict) else l[0]).hostname or "") for l in (links or [])} - {""}

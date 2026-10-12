@@ -32,7 +32,25 @@ async def api_scan(b: ScanIn):
                 extra["read"] = page[:300]
             else:
                 extra["note"] = "I could not open that link, so only the link itself was checked."
-    r = scan(scan_text)
+        r = scan(scan_text)
+    if u:
+        try:
+            import asyncio
+            import urlcheck
+            m = await asyncio.to_thread(urlcheck.scan_url, u)
+        except Exception:
+            m = None
+        if m:
+            extra["url_ml"] = m
+            p = m["phishing_probability"]
+            pct = round(p * 100)
+            if p >= 0.8:
+                r["flags"] = r["flags"] + [f"The link's web address looks like phishing (URL model: {pct}% likely)"]
+                r["level"] = "high"
+            elif p >= 0.5:
+                r["flags"] = r["flags"] + [f"The link's web address looks somewhat suspicious (URL model: {pct}%)"]
+                if r["level"] == "low":
+                    r["level"] = "medium"
     r.update(extra)
     return r
 
@@ -215,7 +233,16 @@ $("go").onclick=async()=>{const t=$("t").value.trim();if(!t)return;
  (d.flags.length?'<div style="margin-top:8px">'+d.flags.map(f=>"• "+esc(f)).join("<br>")+'</div>':'<div style="margin-top:8px;color:#9a9a9a">No red flags found. That does not prove it is true, so verify its claims in the checker.</div>')+
  (d.note?'<div style="margin-top:8px;color:#e0b060;font-size:13px">'+esc(d.note)+'</div>':'')+
  (d.read?'<div style="margin-top:8px;color:#9a9a9a;font-size:13px">Page text read: '+esc(d.read)+'...</div>':'')+
+ (d.url_ml?(LINK=d.link,'<div id="deep" style="margin-top:8px;color:#9a9a9a;font-size:13px">URL model: '+Math.round(d.url_ml.phishing_probability*100)+'% phishing · <a style="color:#8ab4ff;cursor:pointer" onclick="deep()">Deep check</a></div>'):'')+
  '<div style="margin-top:12px"><a class="btn g" href="/app">Verify its claims in the checker</a></div></div>';
  }catch(e){$("out").innerHTML='<div class="card">Something went wrong, please try again.</div>'}
  $("go").disabled=false;$("go").textContent="Scan for red flags"};
+ let LINK="";
+async function deep(){const o=$("deep");o.textContent="Checking WHOIS, DNS and VirusTotal...";
+ try{const r=await fetch("/api/url-enrich",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:LINK})});
+ const d=await r.json();const h=d.holistic;
+ o.innerHTML="Overall: <b>"+esc(h.label)+"</b> ("+h.score+"/100) · sources: "+esc(h.sources_used.join(", "))+(h.overrides.length?"<br>"+h.overrides.map(esc).join("<br>"):"");
+ }catch(e){o.textContent="Deep check failed."}}
+
+ const q0=new URLSearchParams(location.search).get("q");if(q0){$("t").value=q0;$("go").click()}
 </script></body></html>"""

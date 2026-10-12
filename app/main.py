@@ -22,6 +22,7 @@ from app.meta import router as meta_router
 from app.static_page import router as page_router
 from app.tts import router as tts_router
 from app.upload import router as upload_router
+from app.urlapi import router as url_router
 
 app = FastAPI(title="Claim Lens")
 app.include_router(ml_router)
@@ -36,6 +37,7 @@ app.include_router(meta_router)
 app.include_router(page_router)
 app.include_router(tts_router)
 app.include_router(upload_router)
+app.include_router(url_router)
 twilio_client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
 validator = RequestValidator(config.TWILIO_AUTH_TOKEN)
 
