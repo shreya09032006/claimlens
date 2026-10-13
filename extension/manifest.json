@@ -1,5 +1,34 @@
-{"manifest_version":3,"name":"Claim Lens","version":"1.4","description":"Check emails, text and links with Claim Lens",
-"permissions":["contextMenus","scripting","activeTab"],
-"host_permissions":["https://unknotted-waking-omen.ngrok-free.dev/*","https://mail.google.com/*"],
-"background":{"service_worker":"background.js"},
-"content_scripts":[{"matches":["https://mail.google.com/*"],"js":["content.js"],"run_at":"document_idle"}]}
+{
+  "manifest_version": 3,
+  "name": "Claim Lens",
+  "version": "1.4",
+  "description": "Check emails, text and links with Claim Lens",
+  "permissions": ["contextMenus", "scripting", "activeTab"],
+  "host_permissions": [
+    "https://catty-joyous-flyover.ngrok-free.dev/*",
+    "https://unknotted-waking-omen.ngrok-free.dev/*",
+    "https://mail.google.com/*",
+    "https://www.facebook.com/*",
+    "https://facebook.com/*",
+    "https://www.messenger.com/*",
+    "https://messenger.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.facebook.com/*",
+        "https://facebook.com/*",
+        "https://www.messenger.com/*",
+        "https://messenger.com/*"
+      ],
+      "js": ["facebook.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
